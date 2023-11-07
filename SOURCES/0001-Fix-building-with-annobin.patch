@@ -1,0 +1,57 @@
+From 4878775c8e0f2ea6869aff139d219f6eb0c4006c Mon Sep 17 00:00:00 2001
+From: Adrian Reber <areber@redhat.com>
+Date: Fri, 28 Jan 2022 15:10:31 +0000
+Subject: [PATCH] Fix building with annobin
+
+Annobin (used at least in Fedora and RHEL) injects annotation into the
+compiled objects which break the parasite and restorer.
+
+This removes the annobin flags as used in Fedora and RHEL and makes CRIU
+work on Fedora and RHEL with annobin enabled.
+
+Signed-off-by: Adrian Reber <areber@redhat.com>
+---
+ compel/plugins/Makefile   | 2 +-
+ criu/pie/Makefile         | 2 +-
+ criu/pie/Makefile.library | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/compel/plugins/Makefile b/compel/plugins/Makefile
+index e5fa781ac..37630d438 100644
+--- a/compel/plugins/Makefile
++++ b/compel/plugins/Makefile
+@@ -1,4 +1,4 @@
+-CFLAGS		:= $(filter-out -pg $(CFLAGS-GCOV) $(CFLAGS-ASAN),$(CFLAGS))
++CFLAGS		:= $(filter-out -pg $(CFLAGS-GCOV) $(CFLAGS-ASAN) -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1,$(CFLAGS))
+ CFLAGS		+= -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
+ CFLAGS		+= -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=0
+ 
+diff --git a/criu/pie/Makefile b/criu/pie/Makefile
+index 265dcf82b..386626334 100644
+--- a/criu/pie/Makefile
++++ b/criu/pie/Makefile
+@@ -4,7 +4,7 @@
+ 
+ target		:= parasite restorer
+ 
+-CFLAGS		:= $(filter-out -pg $(CFLAGS-GCOV) $(CFLAGS-ASAN),$(CFLAGS))
++CFLAGS		:= $(filter-out -pg $(CFLAGS-GCOV) $(CFLAGS-ASAN) -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1,$(CFLAGS))
+ CFLAGS		+= $(CFLAGS_PIE)
+ ccflags-y	+= -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
+ ccflags-y	+= -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=0
+diff --git a/criu/pie/Makefile.library b/criu/pie/Makefile.library
+index da2a2fab3..6247afe7e 100644
+--- a/criu/pie/Makefile.library
++++ b/criu/pie/Makefile.library
+@@ -21,7 +21,7 @@ ifeq ($(ARCH),arm)
+         lib-y		+= ./$(ARCH_DIR)/pie-cacheflush.o
+ endif
+ 
+-CFLAGS		:= $(filter-out -pg $(CFLAGS-GCOV) $(CFLAGS-ASAN),$(CFLAGS))
++CFLAGS		:= $(filter-out -pg $(CFLAGS-GCOV) $(CFLAGS-ASAN) -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1,$(CFLAGS))
+ CFLAGS		+= $(CFLAGS_PIE)
+ 
+ ifeq ($(ARCH),mips)
+-- 
+2.34.1
+
