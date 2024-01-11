@@ -6,8 +6,8 @@
 %global _lto_cflags %%{nil}
 
 Name: criu
-Version: 3.17
-Release: 5%{?dist}
+Version: 3.18
+Release: 1%{?dist}
 Provides: crtools = %{version}-%{release}
 Obsoletes: crtools <= 1.0-2
 Summary: Tool for Checkpoint/Restore in User-space
@@ -15,11 +15,15 @@ License: GPLv2
 URL: http://criu.org/
 Source0: https://github.com/checkpoint-restore/criu/archive/v%{version}/criu-%{version}.tar.gz
 Source1: criu-tmpfiles.conf
+Source2: pycriu-setup-py
 BuildRequires: gcc
 BuildRequires: systemd
 BuildRequires: libnet-devel
 BuildRequires: protobuf-devel protobuf-c-devel %{py_prefix}-devel libnl3-devel libcap-devel
 BuildRequires: asciidoc xmlto
+BuildRequires: %{py_prefix}-pip
+BuildRequires: %{py_prefix}-setuptools
+BuildRequires: %{py_prefix}-wheel
 BuildRequires: perl-interpreter
 BuildRequires: libselinux-devel
 BuildRequires: gnutls-devel
@@ -76,9 +80,9 @@ their content in human-readable form.
 
 %prep
 %setup -q
-%patch0 -p1
-%patch1 -p1
-%patch2 -p1
+%patch -P 0 -p1
+%patch -P 1 -p1
+%patch -P 2 -p1
 
 %build
 # %{?_smp_mflags} does not work
@@ -87,6 +91,10 @@ CFLAGS+=`echo %{optflags} | sed -e 's,-fstack-protector\S*,,g'` make V=1 WERROR=
 make docs V=1
 
 %install
+cp %{SOURCE2} lib/py/setup.py
+sed -e "s,--upgrade --force-reinstall,--disable-pip-version-check --progress-bar off --verbose,g;
+        s,\./crit,./crit lib/py,g;" -i lib/Makefile
+rm -f crit/pyproject.toml
 make install-criu DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
 make install-lib DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
 make install-man DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
@@ -122,15 +130,21 @@ rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
 
 %files -n %{py_prefix}-%{name}
 %{python3_sitelib}/pycriu/*
-%{python3_sitelib}/*egg-info
+%{python3_sitelib}/pycriu-%{version}.dist-info
 
 %files -n crit
 %{_bindir}/crit
+%{python3_sitelib}/crit-%{version}.dist-info
 %doc %{_mandir}/man1/crit.1*
 
 %changelog
-* Thu May 11 2023 Adrian Reber <areber@redhat.com> - 3.17-5
-- Apply patch to work with Sapphire Rapids CPU
+* Tue Apr 25 2034 Adrian Reber <adrian@lisas.de> - 3.18-1
+- Update to 3.18
+- Apply patch from upstream to support newer CPUs
+
+* Fri Mar 31 2023 Jindrich Novy <jnovy@redhat.com> - 3.17.1-1
+- update to https://github.com/checkpoint-restore/criu/releases/tag/v3.17.1
+- Related: #2176063
 
 * Mon Jul 11 2022 Radostin Stoyanov <radostin@redhat.com> - 3.17-4
 - Rebuilt to pick up glibc rseq() changes
