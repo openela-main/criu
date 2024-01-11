@@ -1,35 +1,40 @@
 %global py_prefix python3
 %global py_binary %{py_prefix}
 
-# With annobin enabled, CRIU does not work anymore. It seems CRIU's
-# parasite code breaks if annobin is enabled.
-%undefine _annotated_build
+# This package calls LD directly without specifying the LTO plugins.  Until
+# that is fixed, disable LTO.
+%global _lto_cflags %%{nil}
 
 Name: criu
-Version: 3.15
+Version: 3.18
 Release: 4%{?dist}
 Provides: crtools = %{version}-%{release}
 Obsoletes: crtools <= 1.0-2
 Summary: Tool for Checkpoint/Restore in User-space
 License: GPLv2
 URL: http://criu.org/
-Source0: http://download.openvz.org/criu/criu-%{version}.tar.bz2
+Source0: https://github.com/checkpoint-restore/criu/archive/v%{version}/criu-%{version}.tar.gz
 Source1: criu-tmpfiles.conf
-# Fix to work on CPUs with larger XSAVE area (Sapphire Rapids)
-# backported to CRIU 3.15
-Patch0: almost-d739260c57576c636759afb312340fa3827312f6.patch
+Source2: pycriu-setup-py
 BuildRequires: gcc
 BuildRequires: systemd
 BuildRequires: libnet-devel
 BuildRequires: protobuf-devel protobuf-c-devel %{py_prefix}-devel libnl3-devel libcap-devel
 BuildRequires: asciidoc xmlto
+BuildRequires: %{py_prefix}-pip
+BuildRequires: %{py_prefix}-setuptools
+BuildRequires: %{py_prefix}-wheel
 BuildRequires: perl-interpreter
 BuildRequires: libselinux-devel
 BuildRequires: gnutls-devel
-BuildRequires: nftables-devel
 BuildRequires: make
 # Checkpointing containers with a tmpfs requires tar
 Recommends: tar
+
+Patch0: 0001-Fix-building-with-annobin.patch
+Patch1: criu.pc.patch
+# Fix to work on CPUs with larger XSAVE area (Sapphire Rapids)
+Patch2: https://github.com/checkpoint-restore/criu/commit/d739260c57576c636759afb312340fa3827312f6.patch
 
 # user-space and kernel changes are only available for x86_64, arm,
 # ppc64le, aarch64 and s390x
@@ -44,7 +49,7 @@ Linux in user-space.
 %package devel
 Summary: Header files and libraries for %{name}
 Requires: %{name} = %{version}-%{release}
-Requires: criu-libs = %{version}-%{release}
+Requires: %{name}-libs = %{version}-%{release}
 
 %description devel
 This package contains header files and libraries for %{name}.
@@ -76,6 +81,8 @@ their content in human-readable form.
 %prep
 %setup -q
 %patch -P 0 -p1
+%patch -P 1 -p1
+%patch -P 2 -p1
 
 %build
 # %{?_smp_mflags} does not work
@@ -84,6 +91,10 @@ CFLAGS+=`echo %{optflags} | sed -e 's,-fstack-protector\S*,,g'` make V=1 WERROR=
 make docs V=1
 
 %install
+cp %{SOURCE2} lib/py/setup.py
+sed -e "s,--upgrade --force-reinstall,--disable-pip-version-check --verbose,g;
+        s,\./crit,./crit lib/py,g;" -i lib/Makefile
+rm -f crit/pyproject.toml
 make install-criu DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
 make install-lib DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
 make install-man DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
@@ -94,11 +105,17 @@ install -d -m 0755 %{buildroot}/run/%{name}/
 # remove static libs
 rm $RPM_BUILD_ROOT%{_libdir}/*.a
 rm -rf $RPM_BUILD_ROOT%{_libexecdir}/%{name}
+# remove compel man-page
+rm $RPM_BUILD_ROOT%{_mandir}/man1/compel.1*
+# remove amdgpu plugin man-page
+rm $RPM_BUILD_ROOT%{_mandir}/man1/amdgpu_plugin.1*
+# remove criu-ns
+rm $RPM_BUILD_ROOT%{_sbindir}/criu-ns
+rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
 
 %files
 %{_sbindir}/%{name}
 %{_mandir}/man8/criu.8*
-%{_mandir}/man1/compel.1*
 %dir /run/%{name}
 %{_tmpfilesdir}/%{name}.conf
 %doc README.md COPYING
@@ -117,33 +134,33 @@ rm -rf $RPM_BUILD_ROOT%{_libexecdir}/%{name}
 
 %files -n crit
 %{_bindir}/crit
+%{python3_sitelib}/*egg-info
 %doc %{_mandir}/man1/crit.1*
 
 %changelog
-* Fri Jun 09 2023 Adrian Reber <areber@redhat.com> - 3.15.4
-- added patch to support CRIU on Sapphire Rapids
-- Resolves: #2203296
+* Tue May 16 2023 Jindrich Novy <jnovy@redhat.com> - 3.18-4
+- switch to egg-info on 8.9
+- Related: #2176055
 
-* Fri Aug 06 2021 Jindrich Novy <jnovy@redhat.com> - 3.15-3
-- add Requires: criu-libs = %%{version}-%%{release} in criu-devel
+* Mon May 15 2023 Jindrich Novy <jnovy@redhat.com> - 3.18-3
+- remove --progress-bar option
+- Related: #2176055
+
+* Thu May 04 2023 Jindrich Novy <jnovy@redhat.com> - 3.18-2
+- update to 3.18
+- Related: #2176055
+
+* Tue Apr 11 2023 Jindrich Novy <jnovy@redhat.com> - 3.17-1
+- update to 3.17
+- Resolves: #2175794
+
+* Mon Aug 02 2021 Jindrich Novy <jnovy@redhat.com> - 3.15-2
 - add gating tests
-- Related: #1934415
+- Related: #1971718
 
-* Tue Jul 20 2021 Jindrich Novy <jnovy@redhat.com> - 3.15-2
+* Fri Jul 30 2021 Jindrich Novy <jnovy@redhat.com> - 3.15-1
 - add -devel and -libs subpackages
 - Resolves: #1971718
-
-* Wed Nov 04 2020 Jindrich Novy <jnovy@redhat.com> - 3.15-1
-- update to https://github.com/checkpoint-restore/criu/releases/tag/v3.15
-- Related: #1883490
-
-* Mon May 25 2020 Jindrich Novy <jnovy@redhat.com> - 3.14-2
-- fix "Need to fix bugs found by coverity."
-- Related: #1821193
-
-* Tue May 12 2020 Jindrich Novy <jnovy@redhat.com> - 3.14-1
-- synchronize containter-tools 8.3.0 with 8.2.1
-- Related: #1821193
 
 * Mon May 13 2019 Adrian Reber <adrian@lisas.de> - 3.12-9
 - Added additional fixup patches for the socket labelling
