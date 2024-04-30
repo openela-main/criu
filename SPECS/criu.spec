@@ -6,7 +6,7 @@
 %global _lto_cflags %%{nil}
 
 Name: criu
-Version: 3.18
+Version: 3.19
 Release: 1%{?dist}
 Provides: crtools = %{version}-%{release}
 Obsoletes: crtools <= 1.0-2
@@ -15,13 +15,13 @@ License: GPLv2
 URL: http://criu.org/
 Source0: https://github.com/checkpoint-restore/criu/archive/v%{version}/criu-%{version}.tar.gz
 Source1: criu-tmpfiles.conf
-Source2: pycriu-setup-py
 BuildRequires: gcc
 BuildRequires: systemd
 BuildRequires: libnet-devel
 BuildRequires: protobuf-devel protobuf-c-devel %{py_prefix}-devel libnl3-devel libcap-devel
 BuildRequires: asciidoc xmlto
 BuildRequires: %{py_prefix}-pip
+BuildRequires: %{py_prefix}-protobuf
 BuildRequires: %{py_prefix}-setuptools
 BuildRequires: %{py_prefix}-wheel
 BuildRequires: perl-interpreter
@@ -33,8 +33,6 @@ Recommends: tar
 
 Patch0: 0001-Fix-building-with-annobin.patch
 Patch1: criu.pc.patch
-# Fix to work on CPUs with larger XSAVE area (Sapphire Rapids)
-Patch2: https://github.com/checkpoint-restore/criu/commit/d739260c57576c636759afb312340fa3827312f6.patch
 
 # user-space and kernel changes are only available for x86_64, arm,
 # ppc64le, aarch64 and s390x
@@ -82,7 +80,6 @@ their content in human-readable form.
 %setup -q
 %patch -P 0 -p1
 %patch -P 1 -p1
-%patch -P 2 -p1
 
 %build
 # %{?_smp_mflags} does not work
@@ -91,12 +88,10 @@ CFLAGS+=`echo %{optflags} | sed -e 's,-fstack-protector\S*,,g'` make V=1 WERROR=
 make docs V=1
 
 %install
-cp %{SOURCE2} lib/py/setup.py
-sed -e "s,--upgrade --force-reinstall,--disable-pip-version-check --progress-bar off --verbose,g;
-        s,\./crit,./crit lib/py,g;" -i lib/Makefile
-rm -f crit/pyproject.toml
+sed -e "s,--upgrade --ignore-installed,--no-index --no-deps -v --no-build-isolation,g" -i lib/Makefile -i crit/Makefile
 make install-criu DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
 make install-lib DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
+make install-crit DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
 make install-man DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
 mkdir -p %{buildroot}%{_tmpfilesdir}
 install -m 0644 %{SOURCE1} %{buildroot}%{_tmpfilesdir}/%{name}.conf
@@ -108,7 +103,7 @@ rm -rf $RPM_BUILD_ROOT%{_libexecdir}/%{name}
 # remove compel man-page
 rm $RPM_BUILD_ROOT%{_mandir}/man1/compel.1*
 # remove amdgpu plugin man-page
-rm $RPM_BUILD_ROOT%{_mandir}/man1/amdgpu_plugin.1*
+rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-amdgpu-plugin.1*
 # remove criu-ns
 rm $RPM_BUILD_ROOT%{_sbindir}/criu-ns
 rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
@@ -129,16 +124,20 @@ rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
 %{_libdir}/*.so.*
 
 %files -n %{py_prefix}-%{name}
-%{python3_sitelib}/pycriu/*
-%{python3_sitelib}/pycriu-%{version}.dist-info
+%{python3_sitelib}/pycriu*
 
 %files -n crit
 %{_bindir}/crit
 %{python3_sitelib}/crit-%{version}.dist-info
+%{python3_sitelib}/crit
 %doc %{_mandir}/man1/crit.1*
 
 %changelog
-* Tue Apr 25 2034 Adrian Reber <adrian@lisas.de> - 3.18-1
+* Fri Dec 08 2023 Radostin Stoyanov <radostin@redhat.com> - 3.19-1
+- Update to 3.19
+- Drop upstreamed patches
+
+* Tue Apr 25 2023 Adrian Reber <adrian@lisas.de> - 3.18-1
 - Update to 3.18
 - Apply patch from upstream to support newer CPUs
 
