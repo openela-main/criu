@@ -7,7 +7,7 @@
 
 Name: criu
 Version: 3.18
-Release: 4%{?dist}
+Release: 5%{?dist}
 Provides: crtools = %{version}-%{release}
 Obsoletes: crtools <= 1.0-2
 Summary: Tool for Checkpoint/Restore in User-space
@@ -138,6 +138,10 @@ rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
 %doc %{_mandir}/man1/crit.1*
 
 %changelog
+* Fri Apr 12 2024 Lokesh Mandvekar <lsm5@redhat.com> - 3.18-5
+- rebuild to preserve upgrade path
+- Related: RHEL-32671
+
 * Tue May 16 2023 Jindrich Novy <jnovy@redhat.com> - 3.18-4
 - switch to egg-info on 8.9
 - Related: #2176055
