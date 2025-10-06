@@ -1,0 +1,12 @@
+diff -ur ../criu-3.19/criu/cr-service.c criu-3.19/criu/cr-service.c
+--- ../criu-3.19/criu/cr-service.c	2023-11-28 01:47:16.000000000 +0100
++++ criu-3.19/criu/cr-service.c	2024-12-17 19:53:43.865616992 +0100
+@@ -570,7 +570,7 @@
+ 	if (req->has_network_lock) {
+ 		switch (req->network_lock) {
+ 		case CRIU_NETWORK_LOCK_METHOD__IPTABLES:
+-			opts.network_lock_method = NETWORK_LOCK_IPTABLES;
++			opts.network_lock_method = NETWORK_LOCK_NFTABLES;
+ 			break;
+ 		case CRIU_NETWORK_LOCK_METHOD__NFTABLES:
+ 			opts.network_lock_method = NETWORK_LOCK_NFTABLES;
