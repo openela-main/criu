@@ -1,0 +1,30 @@
+From 432e9f78b44d15c38fcc07b509ca329b3ad627b5 Mon Sep 17 00:00:00 2001
+From: Adrian Reber <areber@redhat.com>
+Date: Thu, 6 Feb 2025 11:07:17 +0100
+Subject: [PATCH] lsm: use the user provided lsm label
+
+Currently CRIU has the possibility to specify a LSM label during
+restore. Unfortunately the information is completely ignored in the case
+of SELinux.
+
+This change selects the lsm label from the user if it is provided and
+else the label from the checkpoint image is used.
+
+Signed-off-by: Adrian Reber <areber@redhat.com>
+---
+ criu/lsm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/criu/lsm.c b/criu/lsm.c
+index d1b73cc79e..70b66d42ee 100644
+--- a/criu/lsm.c
++++ b/criu/lsm.c
+@@ -370,7 +370,7 @@ int render_lsm_profile(char *profile, char **val)
+ 	case LSMTYPE__APPARMOR:
+ 		return render_aa_profile(val, profile);
+ 	case LSMTYPE__SELINUX:
+-		if (asprintf(val, "%s", profile) < 0) {
++		if (asprintf(val, "%s", opts.lsm_supplied ? opts.lsm_profile : profile) < 0) {
+ 			*val = NULL;
+ 			return -1;
+ 		}
