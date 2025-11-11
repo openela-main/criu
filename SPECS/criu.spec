@@ -11,30 +11,22 @@
 %undefine _auto_set_build_flags
 
 Name: criu
-Version: 3.19
-Release: 9%{?dist}
+Version: 4.1
+Release: 1%{?dist}
 Summary: Tool for Checkpoint/Restore in User-space
 License: GPL-2.0-only AND LGPL-2.1-only AND MIT
 URL: http://criu.org/
 Source0: https://github.com/checkpoint-restore/criu/archive/v%{version}/criu-%{version}.tar.gz
-# This switches the default network locking backend from
-# iptables to nftables
-Patch0: network.lock.nftables.patch
-# Update restartable sequences to latest upstream code
-Patch1: https://github.com/checkpoint-restore/criu/commit/089345f77a34d1bc7ef146d650636afcd3cdda21.patch
+# net: nftables: avoid restore failure if the CRIU nft table already exist
+Patch0: https://github.com/checkpoint-restore/criu/pull/2653.patch
+# s390: Fix FP reg restore after parasite code runs
+Patch1: https://github.com/checkpoint-restore/criu/pull/2648.patch
+# sk-inet: add message how to disable MPTCP in Go
+Patch2: https://github.com/checkpoint-restore/criu/pull/2662.patch
 # Unfortunately crun added code to always force
 # iptables backed network locking. This disables
 # setting the network locking to iptables via RPC.
-Patch2: disable.network.locking.via.rpc.patch
-# net: redirect nftables stdout and stderr to CRIU's log file #2549
-Patch3: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/2549.patch
-# net: remember the name of the lock chain (nftables) #2550
-# based on https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/2550.patch
-Patch4: 2550.patch
-# vdso: switch from DT_HASH to DT_GNU_HASH (aarch64) #2570
-Patch5: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/2570.patch
-# vdso: handle s390x correctly #2590
-Patch6: https://github.com/checkpoint-restore/criu/pull/2590.patch
+Patch3: disable.network.locking.via.rpc.patch
 
 # Add protobuf-c as a dependency.
 # We use this patch because the protobuf-c package name
@@ -120,9 +112,6 @@ This script can help to workaround the so called "PID mismatch" problem.
 %patch -P 1 -p1
 %patch -P 2 -p1
 %patch -P 3 -p1
-%patch -P 4 -p1
-%patch -P 5 -p1
-%patch -P 6 -p1
 %patch -P 99 -p1
 
 %build
@@ -132,15 +121,15 @@ This script can help to workaround the so called "PID mismatch" problem.
 
 # %{?_smp_mflags} does not work
 # -fstack-protector breaks build
-CFLAGS+=`echo %{optflags} | sed -e 's,-fstack-protector\S*,,g'` make V=1 WERROR=0 PREFIX=%{_prefix} RUNDIR=/run/criu PYTHON=%{py_binary}
+CFLAGS+=`echo %{optflags} | sed -e 's,-fstack-protector\S*,,g'` make V=1 WERROR=0 PREFIX=%{_prefix} RUNDIR=/run/criu PYTHON=%{py_binary} PLUGINDIR=%{_libdir}/criu NETWORK_LOCK_DEFAULT=NETWORK_LOCK_NFTABLES
 make docs V=1
 
 
 %install
 sed -e "s,--upgrade --ignore-installed,--no-index --no-deps -v --no-build-isolation,g" -i lib/Makefile -i crit/Makefile
 make install-criu DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
-make install-lib DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
-make install-crit DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
+make install-lib DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary} PIPFLAGS="--no-build-isolation --no-index --no-deps --progress-bar off --upgrade --ignore-installed"
+make install-crit DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}  BINDIR=%{_bindir} SBINDIR=%{_sbindir} PYTHON=%{py_binary} PIPFLAGS="--no-build-isolation --no-index --no-deps --progress-bar off --upgrade --ignore-installed"
 make install-man DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
 rm -f $RPM_BUILD_ROOT%{_mandir}/man1/compel.1
 rm -f $RPM_BUILD_ROOT%{_mandir}/man1/criu-amdgpu-plugin.1
@@ -182,6 +171,9 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/libcriu.a
 %doc %{_mandir}/man1/criu-ns.1*
 
 %changelog
+* Mon May 12 2025 Adrian Reber <areber@redhat.com> - 4.1-1
+- Update to 4.1
+
 * Fri Feb 07 2025 Adrian Reber <areber@redhat.com> - 3.19-9
 - Fix VDSO compile error on s390x
 

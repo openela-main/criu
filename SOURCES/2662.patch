@@ -1,0 +1,36 @@
+From 45d187f9147a9081cdd2df3f8ac6518eee14c9c0 Mon Sep 17 00:00:00 2001
+From: Radostin Stoyanov <rstoyanov@fedoraproject.org>
+Date: Wed, 7 May 2025 14:06:55 +0100
+Subject: [PATCH] sk-inet: add message how to disable MPTCP in Go
+
+With Go version 1.24, ListenConfig now uses MPTCP by default [1].
+Checkpoint/restore for this protocol is not currently supported
+and adding support requires kernel changes that are not trivial
+to implement. As a result, checkpointing of many containers that
+run Go programs is likely to fail with the following error [2]:
+
+(00.026522) Error (criu/sk-inet.c:130): inet: Unsupported proto 262 for socket 2f9bc5
+
+This patch adds a message with suggested workaround for this problem.
+
+[1] https://go.dev/doc/go1.24#netpkgnet
+[2] https://github.com/checkpoint-restore/criu/issues/2655
+
+Signed-off-by: Radostin Stoyanov <rstoyanov@fedoraproject.org>
+---
+ criu/sk-inet.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/criu/sk-inet.c b/criu/sk-inet.c
+index 92f53e5697..a191e78c48 100644
+--- a/criu/sk-inet.c
++++ b/criu/sk-inet.c
+@@ -128,6 +128,8 @@ static int can_dump_ipproto(unsigned int ino, int proto, int type)
+ 		break;
+ 	default:
+ 		pr_err("Unsupported proto %d for socket %x\n", proto, ino);
++		if (proto == IPPROTO_MPTCP)
++			pr_err("For Go programs, consider using \"GODEBUG=multipathtcp=0\" to disable MPTCP\n");
+ 		return 0;
+ 	}
+ 
