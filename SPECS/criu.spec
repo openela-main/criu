@@ -7,7 +7,7 @@
 
 Name: criu
 Version: 3.19
-Release: 1.2%{?dist}
+Release: 3%{?dist}
 Provides: crtools = %{version}-%{release}
 Obsoletes: crtools <= 1.0-2
 Summary: Tool for Checkpoint/Restore in User-space
@@ -138,7 +138,7 @@ rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
 %doc %{_mandir}/man1/crit.1*
 
 %changelog
-* Thu May 08 2025 Adrian Reber <areber@redhat.com> - 3.19-1.2
+* Thu May 08 2025 Adrian Reber <areber@redhat.com> - 3.19-3
 - Added patch to correctly handle SELinux labels in Kubernetes
 - Added latest upstream rseq patch
 
