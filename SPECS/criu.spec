@@ -11,22 +11,16 @@
 %undefine _auto_set_build_flags
 
 Name: criu
-Version: 4.1
+Version: 4.2
 Release: 1%{?dist}
 Summary: Tool for Checkpoint/Restore in User-space
 License: GPL-2.0-only AND LGPL-2.1-only AND MIT
 URL: http://criu.org/
 Source0: https://github.com/checkpoint-restore/criu/archive/v%{version}/criu-%{version}.tar.gz
-# net: nftables: avoid restore failure if the CRIU nft table already exist
-Patch0: https://github.com/checkpoint-restore/criu/pull/2653.patch
-# s390: Fix FP reg restore after parasite code runs
-Patch1: https://github.com/checkpoint-restore/criu/pull/2648.patch
-# sk-inet: add message how to disable MPTCP in Go
-Patch2: https://github.com/checkpoint-restore/criu/pull/2662.patch
 # Unfortunately crun added code to always force
 # iptables backed network locking. This disables
 # setting the network locking to iptables via RPC.
-Patch3: disable.network.locking.via.rpc.patch
+Patch0: disable.network.locking.via.rpc.patch
 
 # Add protobuf-c as a dependency.
 # We use this patch because the protobuf-c package name
@@ -109,9 +103,6 @@ This script can help to workaround the so called "PID mismatch" problem.
 %prep
 %setup -q
 %patch -P 0 -p1
-%patch -P 1 -p1
-%patch -P 2 -p1
-%patch -P 3 -p1
 %patch -P 99 -p1
 
 %build
@@ -171,6 +162,9 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/libcriu.a
 %doc %{_mandir}/man1/criu-ns.1*
 
 %changelog
+* Tue Nov 18 2025 Adrian Reber <areber@redhat.com> - 4.2-1
+- Update to 4.2
+
 * Mon May 12 2025 Adrian Reber <areber@redhat.com> - 4.1-1
 - Update to 4.1
 
