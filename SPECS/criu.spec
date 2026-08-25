@@ -12,7 +12,7 @@
 
 Name: criu
 Version: 4.2
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary: Tool for Checkpoint/Restore in User-space
 License: GPL-2.0-only AND LGPL-2.1-only AND MIT
 URL: http://criu.org/
@@ -21,6 +21,10 @@ Source0: https://github.com/checkpoint-restore/criu/archive/v%{version}/criu-%{v
 # iptables backed network locking. This disables
 # setting the network locking to iptables via RPC.
 Patch0: disable.network.locking.via.rpc.patch
+
+# Based on https://github.com/checkpoint-restore/criu/pull/3097
+Patch1: compel-handle-rseq-in-generic-compel-code.patch
+
 
 # Add protobuf-c as a dependency.
 # We use this patch because the protobuf-c package name
@@ -103,6 +107,7 @@ This script can help to workaround the so called "PID mismatch" problem.
 %prep
 %setup -q
 %patch -P 0 -p1
+%patch -P 1 -p1
 %patch -P 99 -p1
 
 %build
@@ -162,6 +167,10 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/libcriu.a
 %doc %{_mandir}/man1/criu-ns.1*
 
 %changelog
+* Wed Jul 22 2026 Adrian Reber <areber@redhat.com> - 4.2-2
+- Handle rseq in generic compel code (checkpoint-restore/criu#3097)
+
+
 * Tue Nov 18 2025 Adrian Reber <areber@redhat.com> - 4.2-1
 - Update to 4.2
 
