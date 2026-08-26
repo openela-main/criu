@@ -7,7 +7,7 @@
 
 Name: criu
 Version: 3.19
-Release: 3%{?dist}
+Release: 4%{?dist}
 Provides: crtools = %{version}-%{release}
 Obsoletes: crtools <= 1.0-2
 Summary: Tool for Checkpoint/Restore in User-space
@@ -36,6 +36,9 @@ Patch1: criu.pc.patch
 Patch2: https://github.com/checkpoint-restore/criu/pull/2587.patch
 # Update restartable sequences to latest upstream code
 Patch3: https://github.com/checkpoint-restore/criu/commit/089345f77a34d1bc7ef146d650636afcd3cdda21.patch
+
+# Based on https://github.com/checkpoint-restore/criu/pull/3097
+Patch4: compel-handle-rseq-in-generic-compel-code.patch
 
 # user-space and kernel changes are only available for x86_64, arm,
 # ppc64le, aarch64 and s390x
@@ -85,6 +88,7 @@ their content in human-readable form.
 %patch -P 1 -p1
 %patch -P 2 -p1
 %patch -P 3 -p1
+%patch -P 4 -p1
 
 %build
 # %{?_smp_mflags} does not work
@@ -138,6 +142,10 @@ rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
 %doc %{_mandir}/man1/crit.1*
 
 %changelog
+* Wed Jul 22 2026 Adrian Reber <areber@redhat.com> - 3.19-4
+- Handle rseq in generic compel code (checkpoint-restore/criu#3097)
+
+
 * Thu May 08 2025 Adrian Reber <areber@redhat.com> - 3.19-3
 - Added patch to correctly handle SELinux labels in Kubernetes
 - Added latest upstream rseq patch
