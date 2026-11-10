@@ -7,7 +7,7 @@
 
 Name: criu
 Version: 3.19
-Release: 4%{?dist}
+Release: 6%{?dist}
 Provides: crtools = %{version}-%{release}
 Obsoletes: crtools <= 1.0-2
 Summary: Tool for Checkpoint/Restore in User-space
@@ -30,6 +30,7 @@ BuildRequires: gnutls-devel
 BuildRequires: make
 # Checkpointing containers with a tmpfs requires tar
 Recommends: tar
+Recommends: iptables
 
 Patch0: 0001-Fix-building-with-annobin.patch
 Patch1: criu.pc.patch
@@ -91,17 +92,38 @@ their content in human-readable form.
 %patch -P 4 -p1
 
 %build
+# CRIU's parasite/restorer code (criu/pie/) is compiled with its own CFLAGS
+# that already disable hardening (-fno-stack-protector, -U_FORTIFY_SOURCE,
+# -D_FORTIFY_SOURCE=0, -nostdlib). Standard RHEL hardening flags (PIE, RELRO,
+# FORTIFY_SOURCE, stack protector) only affect the main criu binary and libs.
+#
+# CRIU's nmk build system calls ld directly for intermediate partial linking
+# (ld -r). RHEL LDFLAGS contain -specs= options that only gcc understands;
+# raw ld rejects them. Create a wrapper that strips -specs= for direct ld
+# calls. The final criu binary link uses gcc (CC), not ld, so it still gets
+# full hardening (-pie, -z relro, -z now) from the spec files.
+mkdir -p %{_builddir}/bin
+cat > %{_builddir}/bin/ld << 'LDWRAPPER'
+#!/bin/sh
+for arg do
+  shift
+  case "$arg" in -specs=*) continue ;; esac
+  set -- "$@" "$arg"
+done
+exec /usr/bin/ld "$@"
+LDWRAPPER
+chmod +x %{_builddir}/bin/ld
+
 # %{?_smp_mflags} does not work
-# -fstack-protector breaks build
-CFLAGS+=`echo %{optflags} | sed -e 's,-fstack-protector\S*,,g'` make V=1 WERROR=0 PREFIX=%{_prefix} RUNDIR=/run/criu PYTHON=%{py_binary}
+CFLAGS+="%{optflags}" make V=1 WERROR=0 LD=%{_builddir}/bin/ld PREFIX=%{_prefix} RUNDIR=/run/criu PYTHON=%{py_binary}
 make docs V=1
 
 %install
 sed -e "s,--upgrade --ignore-installed,--no-index --no-deps -v --no-build-isolation,g" -i lib/Makefile -i crit/Makefile
-make install-criu DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
-make install-lib DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
-make install-crit DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
-make install-man DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
+make install-criu LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
+make install-lib LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
+make install-crit LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary}
+make install-man LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
 mkdir -p %{buildroot}%{_tmpfilesdir}
 install -m 0644 %{SOURCE1} %{buildroot}%{_tmpfilesdir}/%{name}.conf
 install -d -m 0755 %{buildroot}/run/%{name}/
@@ -142,9 +164,14 @@ rm $RPM_BUILD_ROOT%{_mandir}/man1/criu-ns.1*
 %doc %{_mandir}/man1/crit.1*
 
 %changelog
-* Wed Jul 22 2026 Adrian Reber <areber@redhat.com> - 3.19-4
+* Mon Jul 20 2026 Adrian Reber <areber@redhat.com> - 3.19-6
 - Handle rseq in generic compel code (checkpoint-restore/criu#3097)
 
+* Thu Mar 05 2026 Adrian Reber <areber@redhat.com> - 3.19-5
+- Recommends: iptables
+
+* Mon Mar 02 2026 Christopher Lusk <clusk@redhat.com> - 3.19-4
+- Re-enable binary hardening flags for main binary
 
 * Thu May 08 2025 Adrian Reber <areber@redhat.com> - 3.19-3
 - Added patch to correctly handle SELinux labels in Kubernetes
