@@ -1,0 +1,47 @@
+From 89150bea7218b9c7131b7a7712a84b9c564d8feb Mon Sep 17 00:00:00 2001
+From: 3idey <elaidya225@gmail.com>
+Date: Thu, 5 Feb 2026 20:58:01 +0200
+Subject: [PATCH] fsnotify: Fix file descriptor leak in restore_one_inotify()
+
+When restoring inotify watches, the restore_one_inotify() function opens
+a file descriptor via get_mark_path() and stores it in the 'target'
+variable. However, in two error paths, the function returns directly
+without properly closing this file descriptor:
+
+1. When INOTIFY_IOC_SETNEXTWD ioctl fails (line 556)
+2. When has_inotify_setnextwd is true but watch descriptor mismatch
+   occurs (line 577)
+
+Both cases bypass the cleanup code at the 'err' label which calls
+close_safe(&target), resulting in a file descriptor leak.
+
+Fix this by using 'goto err' instead of 'return -1' in both error paths,
+ensuring proper cleanup of the target file descriptor.
+
+Signed-off-by: 3idey <elaidya225@gmail.com>
+---
+ criu/fsnotify.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/criu/fsnotify.c b/criu/fsnotify.c
+index 8572dc2f3c..7ede629077 100644
+--- a/criu/fsnotify.c
++++ b/criu/fsnotify.c
+@@ -553,7 +553,7 @@ static int restore_one_inotify(int inotify_fd, struct fsnotify_mark_info *info)
+ 	if (kdat.has_inotify_setnextwd) {
+ 		if (ioctl(inotify_fd, INOTIFY_IOC_SETNEXTWD, iwe->wd)) {
+ 			pr_perror("Can't set next inotify wd");
+-			return -1;
++			goto err;
+ 		}
+ 	}
+ 
+@@ -573,7 +573,7 @@ static int restore_one_inotify(int inotify_fd, struct fsnotify_mark_info *info)
+ 		}
+ 
+ 		if (kdat.has_inotify_setnextwd)
+-			return -1;
++			goto err;
+ 
+ 		inotify_rm_watch(inotify_fd, wd);
+ 	}

@@ -1,0 +1,44 @@
+From 6adacd47fccb803087681c94692ac57eb87c23ae Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=C4=8Cestm=C3=ADr=20Kalina?= <ckalina@redhat.com>
+Date: Wed, 25 Mar 2026 00:50:39 +0100
+Subject: [PATCH] build: keep LDFLAGS intact and filter -Wl only for direct ld links
+
+Do not rewrite LDFLAGS globally in build.mk.
+
+The global filter drops distro-provided linker hardening flags from
+normal gcc-linked targets, including the main criu binary. In
+particular, -Wl,-z,now is lost, so the final ELF misses BIND_NOW and
+only gets partial RELRO.
+
+Filter out -Wl,... only when populating ldflags-y for direct $(LD)
+invocations, so built-in/blob links still avoid gcc driver flags while
+gcc-linked binaries retain the full LDFLAGS set.
+
+Signed-off-by: Čestmír Kalina <ckalina@redhat.com>
+---
+ scripts/nmk/scripts/build.mk | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/scripts/nmk/scripts/build.mk b/scripts/nmk/scripts/build.mk
+index d01d2b72c..3f714cb56 100644
+--- a/scripts/nmk/scripts/build.mk
++++ b/scripts/nmk/scripts/build.mk
+@@ -46,7 +46,6 @@ export __nmk-makefile-deps
+ # using $(LD) directly instead so filter out -Wl
+ # flags to make maintainer's life easier.
+ LDFLAGS-MASK	:= -Wl,%
+-LDFLAGS		:= $(filter-out $(LDFLAGS-MASK),$(LDFLAGS))
+ 
+ #
+ # Accumulate common flags.
+@@ -111,7 +110,7 @@ builtin-name	:= $(strip $(builtin-name))
+ 
+ #
+ # Link flags.
+-ldflags-y	:= $(strip $(LDFLAGS) $(ldflags-y))
++ldflags-y	:= $(strip $(filter-out $(LDFLAGS-MASK),$(LDFLAGS)) $(ldflags-y))
+ 
+ #
+ # $(obj) related rules.
+-- 
+2.52.0

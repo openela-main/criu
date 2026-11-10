@@ -1,18 +1,19 @@
 %global py_prefix python3
 %global py_binary %{py_prefix}
 
-# With annobin enabled, CRIU does not work anymore. It seems CRIU's
-# parasite code breaks if annobin is enabled.
+# CRIU's parasite/restorer code (criu/pie/) is compiled with its own CFLAGS
+# that already disable hardening (-fno-stack-protector, -U_FORTIFY_SOURCE,
+# -D_FORTIFY_SOURCE=0, -nostdlib). Standard RHEL hardening flags (PIE, RELRO,
+# FORTIFY_SOURCE, stack protector) only affect the main criu binary and libs.
+#
+# Annobin remains disabled because its instrumentation gets injected into
+# every compilation unit including parasite code, and there is no per-target
+# way to exclude it through the Makefile.
 %undefine _annotated_build
-
-# Disable automatic call to the set_build_flags macro
-# at the beginning of the build, check, and install.
-# This change was introduced in Fedora 36.
-%undefine _auto_set_build_flags
 
 Name: criu
 Version: 4.2
-Release: 2%{?dist}
+Release: 9%{?dist}
 Summary: Tool for Checkpoint/Restore in User-space
 License: GPL-2.0-only AND LGPL-2.1-only AND MIT
 URL: http://criu.org/
@@ -22,9 +23,28 @@ Source0: https://github.com/checkpoint-restore/criu/archive/v%{version}/criu-%{v
 # setting the network locking to iptables via RPC.
 Patch0: disable.network.locking.via.rpc.patch
 
-# Based on https://github.com/checkpoint-restore/criu/pull/3097
-Patch1: compel-handle-rseq-in-generic-compel-code.patch
+# nmk build.mk globally strips -Wl,% from LDFLAGS, which drops -Wl,-z,now
+# needed for BIND_NOW (full RELRO). Move the filter to ldflags-y only so
+# direct ld calls still avoid gcc driver flags while gcc-linked binaries
+# retain the full LDFLAGS set.
+Patch1: 0001-build-keep-LDFLAGS-intact-filter-Wl-only-for-direct-ld.patch
 
+# RHEL-189247
+Patch2: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/3071.patch
+# RHEL-189245 RHEL-189246 RHEL-189248
+Patch3: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/3025.patch
+
+# RHEL-193276
+Patch4: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/2876.patch
+Patch5: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/2880.patch
+Patch6: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/2881.patch
+Patch7: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/3043.patch
+
+# Based on https://github.com/checkpoint-restore/criu/pull/3097
+Patch8: compel-handle-rseq-in-generic-compel-code.patch
+
+# RHEL-180600
+Patch9: https://patch-diff.githubusercontent.com/raw/checkpoint-restore/criu/pull/3059.patch
 
 # Add protobuf-c as a dependency.
 # We use this patch because the protobuf-c package name
@@ -57,7 +77,7 @@ BuildRequires: make
 # user-space and kernel changes are only available for x86_64, arm,
 # ppc64le, aarch64 and s390x
 # https://bugzilla.redhat.com/show_bug.cgi?id=902875
-ExclusiveArch: x86_64 %{arm} ppc64le aarch64 s390x
+ExclusiveArch: x86_64 %{arm} ppc64le aarch64 s390x riscv64
 
 %description
 criu is the user-space part of Checkpoint/Restore in User-space
@@ -108,6 +128,14 @@ This script can help to workaround the so called "PID mismatch" problem.
 %setup -q
 %patch -P 0 -p1
 %patch -P 1 -p1
+%patch -P 2 -p1
+%patch -P 3 -p1
+%patch -P 4 -p1
+%patch -P 5 -p1
+%patch -P 6 -p1
+%patch -P 7 -p1
+%patch -P 8 -p1
+%patch -P 9 -p1
 %patch -P 99 -p1
 
 %build
@@ -115,18 +143,34 @@ This script can help to workaround the so called "PID mismatch" problem.
 # that is fixed, disable LTO.
 %define _lto_cflags %{nil}
 
+# CRIU's nmk build system calls ld directly for intermediate partial linking
+# (ld -r). RHEL LDFLAGS contain -specs= options that only gcc understands;
+# raw ld rejects them. Create a wrapper that strips -specs= for direct ld
+# calls. Patch1 fixes nmk's global stripping of -Wl,% from LDFLAGS so that
+# the final gcc link retains -Wl,-z,now (BIND_NOW) for full RELRO.
+mkdir -p %{_builddir}/bin
+cat > %{_builddir}/bin/ld << 'LDWRAPPER'
+#!/bin/sh
+for arg do
+  shift
+  case "$arg" in -specs=*) continue ;; esac
+  set -- "$@" "$arg"
+done
+exec /usr/bin/ld "$@"
+LDWRAPPER
+chmod +x %{_builddir}/bin/ld
+
 # %{?_smp_mflags} does not work
-# -fstack-protector breaks build
-CFLAGS+=`echo %{optflags} | sed -e 's,-fstack-protector\S*,,g'` make V=1 WERROR=0 PREFIX=%{_prefix} RUNDIR=/run/criu PYTHON=%{py_binary} PLUGINDIR=%{_libdir}/criu NETWORK_LOCK_DEFAULT=NETWORK_LOCK_NFTABLES
+CFLAGS+="%{optflags}" make V=1 WERROR=0 LD=%{_builddir}/bin/ld PREFIX=%{_prefix} RUNDIR=/run/criu PYTHON=%{py_binary} PLUGINDIR=%{_libdir}/criu NETWORK_LOCK_DEFAULT=NETWORK_LOCK_NFTABLES
 make docs V=1
 
 
 %install
 sed -e "s,--upgrade --ignore-installed,--no-index --no-deps -v --no-build-isolation,g" -i lib/Makefile -i crit/Makefile
-make install-criu DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
-make install-lib DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary} PIPFLAGS="--no-build-isolation --no-index --no-deps --progress-bar off --upgrade --ignore-installed"
-make install-crit DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}  BINDIR=%{_bindir} SBINDIR=%{_sbindir} PYTHON=%{py_binary} PIPFLAGS="--no-build-isolation --no-index --no-deps --progress-bar off --upgrade --ignore-installed"
-make install-man DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
+make install-criu LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
+make install-lib LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir} PYTHON=%{py_binary} PIPFLAGS="--no-build-isolation --no-index --no-deps --progress-bar off --upgrade --ignore-installed"
+make install-crit LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}  BINDIR=%{_bindir} SBINDIR=%{_sbindir} PYTHON=%{py_binary} PIPFLAGS="--no-build-isolation --no-index --no-deps --progress-bar off --upgrade --ignore-installed"
+make install-man LD=%{_builddir}/bin/ld DESTDIR=$RPM_BUILD_ROOT PREFIX=%{_prefix} LIBDIR=%{_libdir}
 rm -f $RPM_BUILD_ROOT%{_mandir}/man1/compel.1
 rm -f $RPM_BUILD_ROOT%{_mandir}/man1/criu-amdgpu-plugin.1
 
@@ -167,9 +211,37 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/libcriu.a
 %doc %{_mandir}/man1/criu-ns.1*
 
 %changelog
-* Wed Jul 22 2026 Adrian Reber <areber@redhat.com> - 4.2-2
+* Thu Jul 23 2026 Čestmír Kalina <ckalina@redhat.com> - 4.2-9
+- replace ELFDATA2LSB with BORD in has_elf_identity (checkpoint-restore/criu#3059)
+- Resolves: RHEL-180600
+
+* Mon Jul 20 2026 Adrian Reber <areber@redhat.com> - 4.2-8
 - Handle rseq in generic compel code (checkpoint-restore/criu#3097)
 
+* Wed Jul 08 2026 Adrian Reber <areber@redhat.com> - 4.2-7
+- Apply patch to fix RHEL-193276
+- Resolves: RHEL-193276
+
+* Thu Jul 02 2026 Adrian Reber <areber@redhat.com> - 4.2-6
+- Apply patch to fix RHEL-189245 RHEL-189246 RHEL-189248
+- Resolves: RHEL-189245
+- Resolves: RHEL-189246
+- Resolves: RHEL-189248
+
+* Wed Jul 01 2026 Adrian Reber <areber@redhat.com> - 4.2-5
+- Apply patch to fix RHEL-189247
+- Resolves: RHEL-189247
+
+* Fri Mar 27 2026 Christopher Lusk <clusk@redhat.com> - 4.2-4
+- Fix full RELRO: patch nmk build.mk to preserve -Wl flags for gcc-linked targets
+- Resolves: RHEL-152222
+
+* Thu Mar 05 2026 Andrea Bolognani <abologna@redhat.com> - 4.2-3
+- Enable riscv64 build
+  Resolves: RHEL-153692
+
+* Mon Mar 02 2026 Christopher Lusk <clusk@redhat.com> - 4.2-2
+- Re-enable binary hardening flags for main binary
 
 * Tue Nov 18 2025 Adrian Reber <areber@redhat.com> - 4.2-1
 - Update to 4.2

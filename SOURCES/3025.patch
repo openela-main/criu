@@ -1,0 +1,78 @@
+From 7b5b7ed2715e367d50fff2e23b4d6172cc7e506b Mon Sep 17 00:00:00 2001
+From: Adrian Reber <areber@redhat.com>
+Date: Thu, 21 May 2026 12:35:13 +0000
+Subject: [PATCH 1/2] service: restrict socket permissions to 0600
+
+Change the service socket permissions from 0666 (world-accessible)
+to 0600 (owner-only) to prevent unauthorized local users from
+connecting to the CRIU service socket.
+
+Print a message informing the administrator that the socket is
+restricted and that chmod should be used to widen access if needed.
+
+Assisted-by: Claude Code (claude-opus-4-6):claude-opus-4-6@default
+
+Generated with Claude Code (https://claude.ai/code)
+
+Signed-off-by: Adrian Reber <areber@redhat.com>
+---
+ criu/cr-service.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/criu/cr-service.c b/criu/cr-service.c
+index b3ba7f03f0..d4c206d569 100644
+--- a/criu/cr-service.c
++++ b/criu/cr-service.c
+@@ -1534,12 +1534,16 @@ int cr_service(bool daemon_mode)
+ 
+ 		pr_info("The service socket is bound to %s\n", server_addr.sun_path);
+ 
+-		/* change service socket permissions, so anyone can connect to it */
+-		if (chmod(server_addr.sun_path, 0666)) {
++		/* restrict service socket permissions to owner only */
++		if (chmod(server_addr.sun_path, 0600)) {
+ 			pr_perror("Can't change permissions of the service socket");
+ 			goto err;
+ 		}
+ 
++		pr_msg("Service socket %s has permissions 0600. "
++		       "Use chmod to make it accessible to other users if needed.\n",
++		       server_addr.sun_path);
++
+ 		if (listen(server_fd, 16) == -1) {
+ 			pr_perror("Can't listen for socket connections");
+ 			goto err;
+
+From 0ffb3bc268161b08d531973e5d8be0f37eab6e99 Mon Sep 17 00:00:00 2001
+From: Adrian Reber <areber@redhat.com>
+Date: Thu, 21 May 2026 12:35:22 +0000
+Subject: [PATCH 2/2] test: adapt RPC test for restricted socket permissions
+
+The service socket now defaults to 0600 (owner-only). Since the
+test runs the setuid criu binary as a non-root user (uid 1000),
+the socket ends up owned by root. Chown the socket to the test
+user after service startup so it can connect, mirroring what an
+administrator would do in production.
+
+Assisted-by: Claude Code (claude-opus-4-6):claude-opus-4-6@default
+
+Generated with Claude Code (https://claude.ai/code)
+
+Signed-off-by: Adrian Reber <areber@redhat.com>
+---
+ test/others/rpc/Makefile | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/test/others/rpc/Makefile b/test/others/rpc/Makefile
+index 1607779c4f..17fabb6955 100644
+--- a/test/others/rpc/Makefile
++++ b/test/others/rpc/Makefile
+@@ -32,6 +32,8 @@ run: all
+ 		-d --pidfile pidfile -o service.log --status-fd 200; \
+ 		$(PYTHON) read.py build/status"
+ 	rm -f build/status
++	@# Socket defaults to 0600; transfer ownership to the test user.
++	chown 1000:1000 build/criu_service.socket
+ 	chmod a+rw build/pidfile
+ 	sudo -g '#1000' -u '#1000' ./run.sh
+ 	sudo -g '#1000' -u '#1000' ./version.py

@@ -1,0 +1,45 @@
+From bf2225965e04bd38ac09ede9b8047382724a4764 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=C4=8Cestm=C3=ADr=20Kalina?= <ckalina@redhat.com>
+Date: Tue, 23 Jun 2026 20:12:56 +0200
+Subject: [PATCH] vdso: replace ELFDATA2LSB with BORD in has_elf_identity
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Commit 2d2168fc9 hardcodes ELFDATA2LSB in place of a previously used
+endian-aware macro BORD, causing issues on big endian architectures,
+e.g., on s390x:
+
+    $ ./criu/criu check -v4
+    (00.000000) CRIU run id = 6b0cc8b9-0cbe-44e7-aeb4-7387862d9670
+    (00.000016) Version: 4.2 (gitid v4.2-211-g4d76d1acd)
+    [...]
+    (00.061309) vdso: Parsing at 3ffc75ae000 3ffc75b0000
+    (00.061319) Error (criu/pie-util-vdso.c:126): vdso: Unsupported ELF data encoding: 2
+    (00.061320) Error (criu/vdso.c:633): vdso: Failed to fill self vdso symtable
+    (00.061321) Error (criu/kerndat.c:2043): kerndat_vdso_fill_symtable failed when initializing kerndat.
+    (00.061367) Adjust mmap_min_addr 0x1000 -> 0x10000
+    (00.061368) Found mmap_min_addr 0x10000
+    (00.061374) files stat: fs/nr_open 1073741816
+    (00.061375) Error (criu/crtools.c:280): Could not initialize kernel features detection.
+
+Fixes: 2d2168fc9 ("vdso: relax EI_OSABI check to support linux in ELF header")
+
+Signed-off-by: Čestmír Kalina <ckalina@redhat.com>
+---
+ criu/pie/util-vdso.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/criu/pie/util-vdso.c b/criu/pie/util-vdso.c
+index 45fb6a648b..2cbe1072f9 100644
+--- a/criu/pie/util-vdso.c
++++ b/criu/pie/util-vdso.c
+@@ -122,7 +122,7 @@ static int has_elf_identity(Ehdr_t *ehdr)
+ #endif
+ 
+ 	/* check ELF data encoding */
+-	if (ehdr->e_ident[EI_DATA] != ELFDATA2LSB) {
++	if (ehdr->e_ident[EI_DATA] != BORD) {
+ 		pr_err("Unsupported ELF data encoding: %d\n", ehdr->e_ident[EI_DATA]);
+ 		return false;
+ 	};

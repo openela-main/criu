@@ -1,0 +1,103 @@
+From 33ebc40be98ed7a7132c2daff155c582dc74b5ee Mon Sep 17 00:00:00 2001
+From: 3idey <elaidya225@gmail.com>
+Date: Sun, 8 Feb 2026 12:36:49 +0200
+Subject: [PATCH 1/2] fsnotify: Fix memory leak in pre_dump_one_inotify error
+ path
+
+When irmap_queue_cache fails, the remaining inotify watch descriptors
+and the wd array are not freed, causing a memory leak.
+
+Add cleanup label to ensure proper deallocation of remaining entries
+and the wd array on error paths.
+
+Signed-off-by: 3idey <elaidya225@gmail.com>
+---
+ criu/fsnotify.c | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/criu/fsnotify.c b/criu/fsnotify.c
+index dd468ecaaf..55bae63bd8 100644
+--- a/criu/fsnotify.c
++++ b/criu/fsnotify.c
+@@ -364,7 +364,7 @@ static int dump_one_inotify(int lfd, u32 id, const struct fd_parms *p)
+ static int pre_dump_one_inotify(int pid, int lfd)
+ {
+ 	InotifyFileEntry ie = INOTIFY_FILE_ENTRY__INIT;
+-	int i;
++	int i, ret = -1;
+ 
+ 	if (parse_fdinfo_pid(pid, lfd, FD_TYPES__INOTIFY, &ie)) {
+ 		pr_err("Failed to parse fdinfo for inotify (pid %d lfd %d)\n", pid, lfd);
+@@ -377,13 +377,18 @@ static int pre_dump_one_inotify(int pid, int lfd)
+ 		if (irmap_queue_cache(we->s_dev, we->i_ino, we->f_handle)) {
+ 			pr_err("Failed to queue irmap cache for inotify wd %#x (dev %#x ino %#" PRIx64 ")\n",
+ 			       we->wd, we->s_dev, we->i_ino);
+-			return -1;
++			goto err;
+ 		}
+ 
+ 		xfree(we);
+ 	}
+ 
+-	return 0;
++	ret = 0;
++err:
++	for (; i < ie.n_wd; i++)
++		xfree(ie.wd[i]);
++	xfree(ie.wd);
++	return ret;
+ }
+ 
+ const struct fdtype_ops inotify_dump_ops = {
+
+From 19ac1d63287abaa5a2b49c507c45b0d0a2cb4bb8 Mon Sep 17 00:00:00 2001
+From: 3idey <elaidya225@gmail.com>
+Date: Sun, 8 Feb 2026 12:37:11 +0200
+Subject: [PATCH 2/2] fsnotify: Fix memory leak in pre_dump_one_fanotify error
+ path
+
+When irmap_queue_cache fails, the remaining fanotify mark entries
+and the mark array are not freed, causing a memory leak.
+
+Add cleanup label to ensure proper deallocation of remaining entries
+and the mark array on error paths.
+
+Signed-off-by: 3idey <elaidya225@gmail.com>
+---
+ criu/fsnotify.c | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/criu/fsnotify.c b/criu/fsnotify.c
+index 55bae63bd8..5c05fa28fe 100644
+--- a/criu/fsnotify.c
++++ b/criu/fsnotify.c
+@@ -476,7 +476,7 @@ static int dump_one_fanotify(int lfd, u32 id, const struct fd_parms *p)
+ static int pre_dump_one_fanotify(int pid, int lfd)
+ {
+ 	FanotifyFileEntry fe = FANOTIFY_FILE_ENTRY__INIT;
+-	int i;
++	int i, ret = -1;
+ 
+ 	if (parse_fdinfo_pid(pid, lfd, FD_TYPES__FANOTIFY, &fe)) {
+ 		pr_err("Failed to parse fdinfo for fanotify (pid %d lfd %d)\n", pid, lfd);
+@@ -489,13 +489,18 @@ static int pre_dump_one_fanotify(int pid, int lfd)
+ 		if (me->type == MARK_TYPE__INODE && irmap_queue_cache(me->s_dev, me->ie->i_ino, me->ie->f_handle)) {
+ 			pr_err("Failed to queue irmap cache for fanotify mark (dev %#x ino %#" PRIx64 " mask %#x)\n",
+ 			       me->s_dev, me->ie->i_ino, me->mask);
+-			return -1;
++			goto err;
+ 		}
+ 
+ 		xfree(me);
+ 	}
+ 
+-	return 0;
++	ret = 0;
++err:
++	for (; i < fe.n_mark; i++)
++		xfree(fe.mark[i]);
++	xfree(fe.mark);
++	return ret;
+ }
+ 
+ const struct fdtype_ops fanotify_dump_ops = {
